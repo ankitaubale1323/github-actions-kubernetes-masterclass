@@ -18,7 +18,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-
+    network:
+	- skillpulse
   backend:
     image: ${DOCKERHUB_USERNAME}/skillpulse-ka-backend:latest
     build: ./backend
@@ -30,6 +31,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       PORT: "8080"
+    networks:
+	- skillpulse
     depends_on:
       db:
         condition: service_healthy
@@ -40,8 +43,13 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    networks:
+	- skillpulse
     depends_on:
       - backend
 
 volumes:
   mysql_data:
+
+networks:
+  skillpulse:
