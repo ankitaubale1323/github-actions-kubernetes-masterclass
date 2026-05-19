@@ -1,4 +1,4 @@
-name: CI — Build, Scan & Push
+name: CI
 
 on:
   push:
@@ -12,43 +12,36 @@ permissions:
   contents: read
 
 jobs:
-  # ─────────────────────────────────────────────
-  # JOB 1 — Secret leak detection (runs first)
-  # ─────────────────────────────────────────────
+
   secret-scan:
-    name:  Gitleaks — Secret Scan
+    name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0          # full history so gitleaks can scan all commits
+          fetch-depth: 0
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ─────────────────────────────────────────────
-  # JOB 2 — Build images + Trivy scan + Push
-  # ─────────────────────────────────────────────
   build-scan-push:
-    name: Build → Scan → Push
+    name: Build Scan Push
     runs-on: ubuntu-latest
-    needs: secret-scan            # only runs if secret-scan passes
+    needs: secret-scan
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── Login to Docker Hub ──────────────────
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ── Build Backend ────────────────────────
       - name: Build backend image
         run: |
           docker build \
@@ -56,7 +49,6 @@ jobs:
             -t ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-backend:${{ github.sha }} \
             ./backend
 
-      # ── Build Frontend ───────────────────────
       - name: Build frontend image
         run: |
           docker build \
@@ -64,18 +56,16 @@ jobs:
             -t ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-frontend:${{ github.sha }} \
             ./frontend
 
-      # ── Trivy — Scan Backend ─────────────────
-      - name: Trivy scan — Backend
+      - name: Trivy scan backend
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-backend:latest
           format: table
-          exit-code: "1"          # FAIL pipeline if CRITICAL/HIGH found
+          exit-code: "1"
           ignore-unfixed: true
           severity: CRITICAL,HIGH
 
-      # ── Trivy — Scan Frontend ────────────────
-      - name: Trivy scan — Frontend
+      - name: Trivy scan frontend
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-frontend:latest
@@ -84,20 +74,17 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
 
-      # ── Push Backend ─────────────────────────
       - name: Push backend to Docker Hub
         run: |
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-backend:latest
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-backend:${{ github.sha }}
 
-      # ── Push Frontend ────────────────────────
       - name: Push frontend to Docker Hub
         run: |
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-frontend:latest
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-frontend:${{ github.sha }}
 
-      # ── Summary ──────────────────────────────
-      - name:  Print image tags
+      - name: Print image tags
         run: |
-          echo "Backend  → ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-backend:${{ github.sha }}"
-          echo "Frontend → ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-frontend:${{ github.sha }}"
+          echo "Backend pushed: ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-backend:${{ github.sha }}"
+          echo "Frontend pushed: ${{ secrets.DOCKERHUB_USERNAME }}/skillpulse-frontend:${{ github.sha }}"
