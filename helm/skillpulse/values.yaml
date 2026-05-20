@@ -1,0 +1,52 @@
+namespace: skillpulse
+
+backend:
+  image:
+    repository: ankitaubale1323/skillpulse-backend
+    tag: latest
+    pullPolicy: Always
+  replicas: 2
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+frontend:
+  image:
+    repository: ankitaubale1323/skillpulse-frontend
+    tag: latest
+    pullPolicy: Always
+  replicas: 2
+  port: 80
+  service:
+    type: LoadBalancer
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+mysql:
+  image:
+    repository: mysql
+    tag: "8.4"
+  port: 3306
+  database: skillpulse
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+secret:
+  rootPassword: StrongPass123!
+  password: AppPass456!
