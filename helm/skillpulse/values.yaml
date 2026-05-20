@@ -3,7 +3,7 @@ namespace: skillpulse
 backend:
   image:
     repository: ankitaubale1323/skillpulse-backend
-    tag: latest
+    tag: d838970337a93c049e0a52c92613c4d792be3bad
     pullPolicy: Always
   replicas: 2
   port: 8080
@@ -18,7 +18,7 @@ backend:
 frontend:
   image:
     repository: ankitaubale1323/skillpulse-frontend
-    tag: latest
+    tag: d838970337a93c049e0a52c92613c4d792be3bad
     pullPolicy: Always
   replicas: 2
   port: 80
