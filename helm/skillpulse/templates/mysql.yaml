@@ -25,16 +25,21 @@ spec:
                 secretKeyRef:
                   name: mysql-secret
                   key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_USER
             - name: MYSQL_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mysql-secret
-                  key: MYSQL_PASSWORD
+                  key: DB_PASSWORD
             - name: MYSQL_DATABASE
               valueFrom:
                 secretKeyRef:
                   name: mysql-secret
-                  key: MYSQL_DATABASE
+                  key: DB_NAME
           resources:
             requests:
               cpu: {{ .Values.mysql.resources.requests.cpu }}
@@ -50,6 +55,7 @@ spec:
         name: mysql-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: ebs-sc
         resources:
           requests:
             storage: 1Gi
