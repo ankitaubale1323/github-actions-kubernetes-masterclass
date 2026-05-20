@@ -1,4 +1,4 @@
-name: CD (kind cluster — manifest bump)
+name: CD (ArgoCD)
 
 on:
   workflow_run:
@@ -7,38 +7,103 @@ on:
     branches: [main]
 
 jobs:
-  bump-manifests:
+  deploy-argocd:
+    name: Deploy to EKS via ArgoCD
     if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
 
-      - name: Pin backend + frontend images to commit SHA
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Connect to EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region ap-south-1 \
+            --name skillpulse
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+
+      - name: Update image tags in helm values
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}
           DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          if [ -z "$DOCKER_USER" ]; then
-            echo "ERROR: DOCKERHUB_USERNAME secret is not set."
-            exit 1
-          fi
-          sed -i "s|image: ${DOCKER_USER}/skillpulse-backend:.*|image: ${DOCKER_USER}/skillpulse-backend:${SHA}|"  k8s/20-backend.yaml
-          sed -i "s|image: ${DOCKER_USER}/skillpulse-frontend:.*|image: ${DOCKER_USER}/skillpulse-frontend:${SHA}|" k8s/30-frontend.yaml
+          echo "Updating image tags to: $SHA"
+          sed -i "s|tag: latest|tag: ${SHA}|g" helm/skillpulse/values.yaml
+          cat helm/skillpulse/values.yaml
 
-      - name: Commit + push if changed
+      - name: Commit and push updated tags
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git diff --quiet; then
-            echo "Manifests already pinned to ${SHA}; nothing to commit."
-            exit 0
+            echo "No changes to commit"
+          else
+            git add helm/skillpulse/values.yaml
+            git commit -m "deploy: update image tags to ${SHA:0:7}"
+            git push
           fi
-          git add k8s/20-backend.yaml k8s/30-frontend.yaml
-          git commit -m "deploy: pin backend+frontend to ${SHA:0:7}"
-          git push
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ secrets.ARGOCD_SERVER }} \
+            --username admin \
+            --password ${{ secrets.ARGOCD_PASSWORD }} \
+            --insecure
+
+      - name: Create ArgoCD app if not exists
+        run: |
+          if ! argocd app get skillpulse &>/dev/null; then
+            argocd app create skillpulse \
+              --repo https://github.com/ankitaubale1323/github-actions-kubernetes-masterclass \
+              --path helm/skillpulse \
+              --dest-server https://kubernetes.default.svc \
+              --dest-namespace skillpulse \
+              --sync-policy automated \
+              --auto-prune \
+              --self-heal
+          else
+            echo "App already exists"
+          fi
+
+      - name: Sync ArgoCD app
+        run: |
+          argocd app sync skillpulse
+          echo "Sync triggered!"
+
+      - name: Wait for healthy deployment
+        run: |
+          argocd app wait skillpulse \
+            --health \
+            --timeout 300
+
+      - name: Show deployment status
+        run: |
+          echo "====== PODS ======"
+          kubectl get pods -n skillpulse
+          echo "====== SERVICES ======"
+          kubectl get svc -n skillpulse
+          echo "====== APP URL ======"
+          kubectl get svc frontend -n skillpulse \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+          echo ""

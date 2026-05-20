@@ -106,19 +106,35 @@ spec:
                 secretKeyRef:
                   name: mysql-secret
                   key: MYSQL_ROOT_PASSWORD
+<<<<<<< HEAD
 
+=======
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_USER
+>>>>>>> db444a47aca069f6f749b8c4bbcf3ba65c9418d4
             - name: MYSQL_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mysql-secret
+<<<<<<< HEAD
                   key: MYSQL_PASSWORD
 
+=======
+                  key: DB_PASSWORD
+>>>>>>> db444a47aca069f6f749b8c4bbcf3ba65c9418d4
             - name: MYSQL_DATABASE
               valueFrom:
                 secretKeyRef:
                   name: mysql-secret
+<<<<<<< HEAD
                   key: MYSQL_DATABASE
 
+=======
+                  key: DB_NAME
+>>>>>>> db444a47aca069f6f749b8c4bbcf3ba65c9418d4
           resources:
             requests:
               cpu: {{ .Values.mysql.resources.requests.cpu }}
@@ -140,9 +156,14 @@ spec:
         name: mysql-data
 
       spec:
+<<<<<<< HEAD
         accessModes:
           - ReadWriteOnce
 
+=======
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: ebs-sc
+>>>>>>> db444a47aca069f6f749b8c4bbcf3ba65c9418d4
         resources:
           requests:
             storage: 1Gi
