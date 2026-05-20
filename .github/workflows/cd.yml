@@ -10,23 +10,78 @@ jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+
     steps:
-      - uses: appleboy/ssh-action@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Fetch secrets from AWS Secrets Manager
+        run: |
+          # Get secret from AWS
+          SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id skillpulse/app \
+            --query SecretString \
+            --output text \
+            --region ap-south-1)
+
+          # Parse each value and add to GitHub ENV
+          echo "DOCKERHUB_USERNAME=$(echo $SECRET | jq -r .DOCKERHUB_USERNAME)" >> $GITHUB_ENV
+          echo "MYSQL_ROOT_PASSWORD=$(echo $SECRET | jq -r .MYSQL_ROOT_PASSWORD)" >> $GITHUB_ENV
+          echo "MYSQL_PASSWORD=$(echo $SECRET | jq -r .MYSQL_PASSWORD)" >> $GITHUB_ENV
+          echo "MYSQL_DATABASE=$(echo $SECRET | jq -r .MYSQL_DATABASE)" >> $GITHUB_ENV
+          echo "MYSQL_USER=$(echo $SECRET | jq -r .MYSQL_USER)" >> $GITHUB_ENV
+          echo "DB_HOST=$(echo $SECRET | jq -r .DB_HOST)" >> $GITHUB_ENV
+          echo "DB_PORT=$(echo $SECRET | jq -r .DB_PORT)" >> $GITHUB_ENV
+          echo "DB_USER=$(echo $SECRET | jq -r .DB_USER)" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$(echo $SECRET | jq -r .DB_PASSWORD)" >> $GITHUB_ENV
+          echo "DB_NAME=$(echo $SECRET | jq -r .DB_NAME)" >> $GITHUB_ENV
+
+      - name: SSH and deploy to EC2
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DOCKERHUB_USERNAME,MYSQL_ROOT_PASSWORD,MYSQL_PASSWORD,MYSQL_DATABASE,MYSQL_USER,DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME
           script: |
-            if [ ! -d ~/github-actions-kubernetes-masterclass ]; then
-              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/github-actions-kubernetes-masterclass
+            # Install docker compose if not present
+            if ! docker compose version &>/dev/null; then
+              sudo apt install docker-compose-v2 -y
             fi
+
+            # Clone repo if first time
+            if [ ! -d ~/github-actions-kubernetes-masterclass ]; then
+              git clone https://github.com/ankitaubale1323/github-actions-kubernetes-masterclass.git \
+                ~/github-actions-kubernetes-masterclass
+            fi
+
             cd ~/github-actions-kubernetes-masterclass
             git pull origin main
-            if [ ! -f .env ]; then
-              echo "ERROR: ~/github-actions-kubernetes-masterclass/.env is missing. Create it once with DOCKERHUB_USERNAME and DB credentials."
-              exit 1
-            fi
+
+            # Create .env from AWS Secrets Manager values
+            cat > .env << ENVEOF
+            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
+            MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            MYSQL_PASSWORD=${MYSQL_PASSWORD}
+            MYSQL_DATABASE=${MYSQL_DATABASE}
+            MYSQL_USER=${MYSQL_USER}
+            DB_HOST=${DB_HOST}
+            DB_PORT=${DB_PORT}
+            DB_USER=${DB_USER}
+            DB_PASSWORD=${DB_PASSWORD}
+            DB_NAME=${DB_NAME}
+            ENVEOF
+
+            # Deploy
             docker compose pull
             docker compose up -d
             docker image prune -f
 
+            # Verify
+            sleep 10
+            docker ps
+            curl -s http://localhost/health || echo "Health check failed"
