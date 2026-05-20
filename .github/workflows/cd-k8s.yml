@@ -1,4 +1,4 @@
-name: CD (ArgoCD - EKS Deploy)
+name: CD (ArgoCD)
 
 on:
   workflow_run:
@@ -40,25 +40,14 @@ jobs:
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x argocd
           sudo mv argocd /usr/local/bin/
-          argocd version --client
 
-      - name: Update image tag in helm values
+      - name: Update image tags in helm values
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}
           DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          SHORT_SHA=${SHA:0:7}
           echo "Updating image tags to: $SHA"
-
-          # Update backend tag
-          sed -i "/repository: ${DOCKER_USER}\/skillpulse-backend/{n;s/tag: .*/tag: ${SHA}/}" \
-            helm/skillpulse/values.yaml
-
-          # Update frontend tag  
-          sed -i "/repository: ${DOCKER_USER}\/skillpulse-frontend/{n;s/tag: .*/tag: ${SHA}/}" \
-            helm/skillpulse/values.yaml
-
-          echo "Updated values.yaml:"
+          sed -i "s|tag: latest|tag: ${SHA}|g" helm/skillpulse/values.yaml
           cat helm/skillpulse/values.yaml
 
       - name: Commit and push updated tags
@@ -67,7 +56,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           if git diff --quiet; then
             echo "No changes to commit"
           else
@@ -86,7 +74,6 @@ jobs:
       - name: Create ArgoCD app if not exists
         run: |
           if ! argocd app get skillpulse &>/dev/null; then
-            echo "Creating ArgoCD app..."
             argocd app create skillpulse \
               --repo https://github.com/ankitaubale1323/github-actions-kubernetes-masterclass \
               --path helm/skillpulse \
@@ -94,16 +81,14 @@ jobs:
               --dest-namespace skillpulse \
               --sync-policy automated \
               --auto-prune \
-              --self-heal \
-              --helm-set backend.image.tag=${{ github.event.workflow_run.head_sha }} \
-              --helm-set frontend.image.tag=${{ github.event.workflow_run.head_sha }}
+              --self-heal
           else
             echo "App already exists"
           fi
 
       - name: Sync ArgoCD app
         run: |
-          argocd app sync skillpulse --async
+          argocd app sync skillpulse
           echo "Sync triggered!"
 
       - name: Wait for healthy deployment
@@ -111,20 +96,14 @@ jobs:
           argocd app wait skillpulse \
             --health \
             --timeout 300
-          echo "Deployment healthy!"
 
       - name: Show deployment status
         run: |
           echo "====== PODS ======"
           kubectl get pods -n skillpulse
-
           echo "====== SERVICES ======"
           kubectl get svc -n skillpulse
-
           echo "====== APP URL ======"
           kubectl get svc frontend -n skillpulse \
             -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
           echo ""
-
-          echo "====== ARGOCD STATUS ======"
-          argocd app get skillpulse
