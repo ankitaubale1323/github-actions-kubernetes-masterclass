@@ -20,3 +20,15 @@ CLAUDE.md
 # Intermediate PDF render output (regenerated from .md + .css)
 docs/skillpulse-cicd-guide.html
 docs/skillpulse-kubernetes-guide.html
+helm/skillpulse/templates/secret.yaml
+helm/skillpulse/templates/secret.yaml
+
+# Secrets - never commit these
+helm/skillpulse/templates/secret.yaml
+**/secret.yaml
+*.pem
+*.key
+.env
+**/.env
+*secret*
+*password*
